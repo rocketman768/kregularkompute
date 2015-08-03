@@ -1,0 +1,37 @@
+# To submit a job you need to create an execution script in the directory
+# from which you are going to run the job. PBS directives are specified as
+# comments in the script. In particular, all lines beginning with #PBS are
+# PBS directives. After the PBS directives is the body of the script - commands
+# which are executed when the script runs.
+
+# Request memory and cpu time (these are mandatory)
+# pmem is the amount of physical memory per process.
+#PBS -l pmem=131mb
+#PBS -l walltime=39:00:00
+# Example: PBS -l pmem=288mb
+# Example: PBS -l cput=00:00:30
+
+# Set number of cpus and scheduling stuff.
+#PBS -l nodes=35:ppn=2
+#PBS -l nice=-15
+
+# Email me when you begin, exit, or abort.
+#PBS -m bea
+#PBS -M pglee@clemson.edu
+
+# Name the job.
+#PBS -N Thm4P3
+
+# Change to the directory the job was submitted from.
+cd $PBS_O_WORKDIR
+
+# MP_SHARED_MEMORY means that cpus on the same machine will
+# use 256MB dedicated (extra) memory to communicate with
+# each other.
+export MP_SHARED_MEMORY=yes
+
+cat $PBS_NODEFILE > /home/pglee/nodes.txt
+
+# Start the machines running.
+mpirun -np 70 -machinefile $PBS_NODEFILE main --k 13 --max 1300000 --prefix /cluster/pglee/data --lastmodulus 1000002187 --maxmodulus 1000003133
+

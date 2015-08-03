@@ -1,0 +1,305 @@
+% Copyright 2008 Philip Greggory Lee.
+% Contact me at: rocketman768@gmail.com
+
+% This file is part of KregularKompute.
+%
+% KregularKompute is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+%
+% KregularKompute is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+%
+% You should have received a copy of the GNU General Public License
+% along with KregularKompute.  If not, see <http://www.gnu.org/licenses/>.
+
+\documentclass[11pt]{article}
+
+% How to use the color package...
+% http://ricardo.ecn.wfu.edu/LaTeX/usecolour.html
+\usepackage[usenames, dvipsnames]{color}
+\usepackage{url}
+\usepackage{amsmath, amssymb}
+
+% How to define new commands...
+% http://web.mit.edu/answers/latex/latex_def.html
+\newcommand{\void}{\textcolor{OliveGreen}{void }}
+\newcommand{\ul}{ \textcolor{OliveGreen}{unsigned long }}
+\newcommand{\ch}{ \textcolor{OliveGreen}{char }}
+\newcommand{\integer}{ \textcolor{OliveGreen}{int }}
+
+\author{Philip G. Lee}
+\title{Documentation of KregularKompute code}
+
+\begin{document}
+
+\maketitle
+
+\section{General Stuff}
+
+First of all, the code provided is copyrighted (or perhaps more specifically, ``copylefted'') and released under
+the GPLv3. Basically, if you modify this code to make and distribute something else, you must also release
+your modified source code. More information is available at \url{http://www.gnu.org/licenses/}.
+
+You will notice that I haven't provided a general-purpose program to reconstruct values of the k-regular
+partition functions with the Chinese Remainder Theorem. However, building such a program should be
+relatively simple given that this suite of functions already contains functions that implement the
+Chinese Remainder Theorem, and I have created a program (contained in \texttt{thm4reconstruct.c})
+that reconstructs specific values of the k-regular partition functions.
+
+If you have any questions at all, please email me at \url{rocketman768@gmail.com}.
+
+\section{Making \& Running the Executables}
+
+To compile everything, you will need \texttt{make}, a C compiler, and \texttt{mpicc} installed. You will also need the GMP library
+available at gmplib.org as of March 2008. Also, this code is \itshape probably \upshape unix-specific. If you use something other
+than \texttt{gcc} as a C compiler, change ``\texttt{CC = gcc}'' in \texttt{Makefile} to represent what compiler you have.
+Simply type ``\texttt{make}'' at the command line in the KregularKompute directory and two executables will be built: \texttt{main} \& \texttt{viewer}.
+
+The executable \texttt{main} is the parallel algorithm and must be invoked with \texttt{mpirun}. The usage is as follows:
+
+\vspace{0cm}
+\begin{center}
+\noindent { \scriptsize \texttt{main --k num --max num --prefix string [--lastmodulus num --maxmodulus num]} }
+\end{center}
+\vspace{0cm}
+
+\noindent Note that \texttt{k}, \texttt{max}, and \texttt{prefix} are all required.
+Options \texttt{lastmodulus} and \texttt{maxmodulus}
+are optional, but if one is present, the other must be also. Other options:
+\begin{itemize}
+	\item { \scriptsize \texttt{--version}}: prints out version to \texttt{stdout} and exits.
+	\item { \scriptsize \texttt{--usage}}: prints out usage info to \texttt{stdout} and exits.
+\end{itemize}
+
+The executable \texttt{viewer} takes a single argument, which is a filename, reads in that file with format as seen in Figure \ref{bkFileFormat},
+and prints out the human-readable contents to \texttt{stdout}.
+
+\section{File Formats}
+
+The first file format used within KregularKompute is the .bk file format.
+As seen in Figure \ref{bkFileFormat}, the \texttt{terms} field represents
+the total number of unsigned long numbers in the file other than itself.
+The rest of the file simply consists of these unsigned long numbers in
+binary format.
+
+\begin{figure}[h]
+	\begin{center}
+		\begin{tabular}{|c|c}
+		\cline{1-1}
+		\texttt{terms} & \ul \\
+		\cline{1-1}
+		$a_1$ & \ul \\
+		\cline{1-1}
+		$a_2$ & \ul \\
+		$\vdots$ & $\vdots$\\
+		\cline{1-1}
+		$a_\texttt{terms}$ & \ul \\
+		\cline{1-1}
+		\end{tabular}
+	\end{center}
+	
+	
+	\caption{ The .bk file format. \label{bkFileFormat} }
+\end{figure}
+
+\section{The Algorithm \& its Implementation}
+
+The algorithm is as follows:
+\begin{eqnarray}
+b_k(n) &=& \frac{1}{n}\sum_{i=0}^{n-1}{b_k(i)g_{n-i}} \mbox{ , where} \\
+g_i &=& \sum_{\substack{e \mid i \\ k \nmid e}}{e}.
+\end{eqnarray}
+However, the divisors of $i$ come in pairs. So, we can reduce an $O(n)$ algorithm
+to an $O(\sqrt{n})$ algorithm by performing this calculation instead:
+\begin{equation*}
+g_i = \sum_{\substack{e|i \\ 1 \leq e \leq \sqrt{i}}}{\tilde{e}}
+\end{equation*}
+\begin{equation*}
+\tilde{e} = \left\{
+\begin{array}{cl}
+e + \frac{i}{e} & \mbox{if } k \nmid e \mbox{ and } k \nmid \frac{i}{e} \mbox{ and } \frac{i}{e} \neq e \\
+e & \mbox{if } k \nmid e \mbox{ only} \\
+0 & otherwise
+\end{array}
+\right.
+\end{equation*}
+
+\subsection{Parallelization}
+
+The method used to parallelize the algorithm is simple. If there are $N$ processes, have the $j\mbox{th}$ process
+store $b_k(i) \mbox{ s.t. } i \equiv j \pmod{N}$ and all $g_i$. To calculate $b_k(n)$, each process computes
+\begin{equation}
+P_j(n) = \sum_{\substack{0 \leq i \leq n-1 \\ i \equiv j \mod N}}{b_k(i)g_{n-i}}\mbox{,}
+\end{equation}
+and a group reduction takes place which computes $S := \sum_{j}{P_j(n)}$ and gives the result to the process who is
+$j \pmod{N}$. That process then computes $\frac{1}{n}S$ and stores it into memory.
+
+\subsection{Modular Arithmetic}
+
+To avoid gigantic numbers in memory, KregularKompute does all the arithmetic modulo primes. However, this
+presents a problem: there is a modular inversion of $n$ required if you want to compute $b_k(n)$.
+So, you must do two things:
+\begin{enumerate}
+	\item Pick primes $\geq p$ such that $n < p \mbox{ } \forall n$,
+	\item Use Chinese Remainder Theorem to reconstruct the values you wish.
+\end{enumerate}
+
+\subsection{Chinese Remainder Theorem}
+
+Since we have to have a bound for $b_k(n)$ for Chinese Remainder Theorem to work,
+we need at least a crude bound. The one I chose in the code is the Hardy-Ramanujan asypmtotic
+formula for $p(n)$:
+\begin{equation}
+p(n) \sim \frac{1}{4n\sqrt{3}}\exp\left(\pi \sqrt{\frac{2n}{3}}\right).
+\end{equation}
+Since $b_k(n) \leq p(n)$, this should be a good bound for any well-sized $n$.
+
+We must calculate $b_k(n) \pmod{p_i}$ where $\prod_{i}{p_i} \geq \frac{1}{4n\sqrt{3}}\exp\left(\pi \sqrt{\frac{2n}{3}}\right)$.
+In the code, I chose to start picking primes at around 1 billion. Say $\#\{p_i\} = x$, then taking $x = \mbox{ceil}\left(\frac{\pi}{9\ln(10)} \sqrt{\frac{2n}{3}}\right)$
+satisfies the inequalities. So, calculate the first $x$ primes greater than a billion, and you're ready to go!
+
+\subsection{Running Time}
+
+If $n$ is the amount of terms of $b_k$ you wish to calculate, the original algorithm is $O(n^2)$.
+The Chinese Remainder Theorem version is $O\left(n^{5/2}\right)$ since $x$ is order $\sqrt{n}$.
+By doing tests, I saw that the running time decreases in direct proportion to the number
+of processes if each was run on a physically real and separate CPU.
+
+\subsection{General Comments}
+
+I was absolutely sure this algorithm would be communication-bound, but on Clemson's cluster,
+each processor was nearly 100\% active with the job. So, when you decide you want to modify the code,
+take a look at optimizing some loops or something.
+
+\section{Notes About the Source Files}
+
+\subsection{main.c}
+
+\indent \texttt{FIRSTPRIME} is defined to be a billion. The algorithm starts out with primes just greater than \texttt{FIRSTPRIME}, so if you change this definition,
+you should also change the estimate on how many primes you need. You will obviously need less if \texttt{FIRSTPRIME} is larger.
+This would be the ``\texttt{d\_numprimes...}'' line, and you would change the ``\texttt{9 * log(10)}'' to be the natural log of \texttt{FIRSTPRIME}.
+
+\subsection{chinesert.c}
+
+{ \tiny
+\texttt{ \void crt( mpz\_t x, \ul *a, \ul *m, \ul elts )}
+}
+
+Computes the solution to $\texttt{x} = \texttt{a[i]} \pmod{\texttt{m[i]}} \mbox{, } 0 \leq i \leq \texttt{elts}$ using Chinese Remainder Theorem.
+You need to make sure the \texttt{m[i]} are all relatively prime, else this won't work.
+The algorithm must calculate the product of all elements of the \texttt{m[]} array, so it saves computing power by only doing this once.
+If you supply a different \texttt{m[]} array after the first call, you must call \texttt{crt\_reset()} beforehand.
+If you want to use this function without first calling \texttt{misc.c:init()}, then you should define \texttt{CRT\_STANDALONE} at compile time.
+
+\subsection{dump.c}
+
+{ \tiny
+\texttt{\void dump( \ch *file )}
+}
+
+Dumps the contents of a binary file, whose contents are of the type described in Figure \ref{bkFileFormat}, to \texttt{stdout}.
+
+\subsection{gcompute.c}
+
+{\tiny
+\texttt{\void gcompute( \ul *ret, \ul k, \ul high, \ul modulus )}
+}
+
+Computes the sequence $g_i \pmod{ \texttt{ modulus } }$, $0 \leq i \leq \texttt{high}$, from the \texttt{k}-regular algorithm and stores it in \texttt{ret}.
+Note that \texttt{ret} must be allocated and contain enough space for the list of numbers.
+
+\subsection{inverse.c}
+
+{ \tiny
+\texttt{\ul inverse( \ul number, \ul modulus )}
+}
+
+Uses Euler's method to calculate $\texttt{number}^{-1} \pmod{\texttt{modulus}}$.
+If you want to use this function without first calling \texttt{misc.c:init()},
+then you should define \texttt{INV\_STANDALONE} at compile time.
+This function also has a built-in check to insure the answer is really the inverse (it returns 0 if the check fails).
+If you want to skip this check to speed up the algorithm, define \texttt{INV\_NOCHECK} at compile time.
+
+\subsection{kregular.c}
+
+{ \tiny
+\texttt{\void kregular(\ul k, \ul terms, \ul modulus, \ch *outfile)}
+}
+
+Computes $b_k(i) \pmod{\texttt{modulus}}$, $0 \leq i \leq \texttt{terms}$, and writes the result to outfile.
+If you want to get regular updates via \texttt{stdout} about how many terms are left to compute,
+define \texttt{KREG\_UPDATES} at compile time, and define \texttt{ALARM\_INTERVAL} to be the amount of seconds between updates.
+I think this \textit{could} cause issues since we are interrupting processes in a parallel algorithm. I haven't tried it though.
+Email me what happens when you try it.
+
+\subsection{makefilenames.c}
+
+{ \tiny
+\texttt{\void makeFilename( \ch *name, \ul k, \ul modulus, \ul high, \ch *prefix )}
+}
+
+Puts a string into the {\bfseries already allocated} \texttt{name} starting with \texttt{prefix} and ending with a meaninful filename.
+
+\subsection{misc.c}
+
+{ \tiny
+\texttt{\integer init()}
+}
+
+Does some set-up stuff. Initializes global variables and stuff. Need to call this early on in the main program.
+
+\noindent { \tiny
+\texttt{\void teardown()}
+}
+
+Opposite of \texttt{init()}.
+
+\noindent { \tiny
+\texttt{\void die()}
+}
+
+Calls \texttt{MPI\_Finalize()} and exits with value -1.
+
+\subsection{prime.c}
+
+{ \tiny
+\texttt{\integer isprime( \ul n )}
+}
+
+Returns 0 if \texttt{n} is not prime and 1 if it is. This shouldn't be used too heavily
+because I didn't do anything fancy here.
+
+\noindent { \tiny
+\texttt{\ul nextprime( \ul n )}
+}
+
+Returns the next prime greater than \texttt{n}. This shouldn't be used too heavily
+because I didn't do anything fancy here.
+
+\subsection{sum\_mod\_op.c}
+
+\noindent { \tiny
+\texttt{\void sumMod( \ul *in, \ul *inout, \integer *len, MPI\_Datatype *dptr )}
+}
+
+An MPI reduction function that adds numbers together and reduces via \texttt{\_sum\_modulus} defined in \texttt{algorithms.h}.
+
+{ \tiny
+\texttt{\void sumModOpInit( \ul modulus )}
+}
+
+Sets \texttt{\_sum\_modulus} to \texttt{modulus} and creates the MPI operator \texttt{SUM\_MOD\_OP} defined in \texttt{algorithms.h}.
+
+\subsection{viewer.c}
+
+Makes an executable that dumps the contents of a file described by \ref{bkFileFormat} to \texttt{stdout}.
+
+\subsection{theorem4.pbs}
+
+A PBS script I made to run \texttt{main} and help me prove cases of Theorem 4 in ``The parity of the 5-regular and 13-regular partition functions.''
+
+\end{document}
